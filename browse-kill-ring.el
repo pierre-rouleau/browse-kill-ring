@@ -1,4 +1,4 @@
-;;; browse-kill-ring.el --- interactively insert items from kill-ring -*- coding: utf-8 -*-
+;;; browse-kill-ring.el --- interactively insert items from kill-ring -*- lexical-binding: t -*-
 
 ;; Copyright (C) 2001, 2002 Colin Walters <walters@verbum.org>
 
@@ -128,15 +128,19 @@ See `browse-kill-ring-display-style'."
   browse-kill-ring-highlight-current-entry
   "If non-nil, then temporarily highlight the inserted `kill-ring' entry.
 The value selected controls how the inserted item is highlighted,
-possible values are `solid' (highlight the inserted text for a
-fixed period of time), or `pulse' (use the `pulse' library, a
-part of `cedet', to fade out the highlighting gradually).
-Setting this variable to the value `t' will select the default
-highlighting style, which is currently `pulse'.
+possible values are:
+- solid: highlight the inserted text for a fixed period of time,
+- pulse: use the `pulse' library, a part of `cedet', to fade out
+         the highlighting gradually,
+- t    : select the default highlighting style, which is currently pulse.
 
 The variable `browse-kill-ring-inserted-item-face' contains the
 face used for highlighting."
-  :type '(choice (const nil) (const t) (const solid) (const pulse))
+  :type '(choice
+          (const nil)
+          (const t)
+          (const solid)
+          (const pulse))
   :group 'browse-kill-ring)
 
 (defcustom browse-kill-ring-separator-face 'bold
@@ -240,12 +244,10 @@ call `browse-kill-ring' again.")
 (defun browse-kill-ring-mouse-insert (e)
   "Insert the chosen text, and close the *Kill Ring* buffer afterwards."
   (interactive "e")
-  (let* ((data (save-excursion
-                 (mouse-set-point e)
-                 (cons (current-buffer) (point))))
-         (buf (car data))
-         (pt (cdr data)))
-    (browse-kill-ring-do-insert buf pt t)))
+  (browse-kill-ring-do-insert (save-excursion
+                                (mouse-set-point e)
+                                (point))
+                              t))
 
 (if (fboundp 'fit-window-to-buffer)
     (defalias 'browse-kill-ring-fit-window 'fit-window-to-buffer)
@@ -284,24 +286,21 @@ yanked text from the *Kill Ring* buffer."
 If optional argument QUIT is non-nil, close the *Kill Ring* buffer as
 well."
   (interactive "P")
-  (browse-kill-ring-do-insert (current-buffer)
-                              (point)
-                              quit))
+  (browse-kill-ring-do-insert (point) quit))
 
 (defun browse-kill-ring-insert-new (insert-action post-action &optional quit)
   "Insert the kill ring item at point into the last selected buffer.
-INSERT-ACTION can be \\='insert \\='append \\='prepend.
-POST-ACTION can be nil \\='move \\='delete.
+INSERT-ACTION can be \\='insert, \\='append or \\='prepend.
+POST-ACTION can be nil, \\='move or \\='delete.
 If optional argument QUIT is non-nil, close the *Kill Ring* buffer as
 well."
   (interactive "P")
-  (let* ((buf (current-buffer))
-        (pt (point))
-        (str (browse-kill-ring-current-string buf pt)))
+  (let* ((pt (point))
+        (str (browse-kill-ring-current-string pt)))
     (cl-case insert-action
-      (insert (browse-kill-ring-do-insert buf pt nil))
-      (append (browse-kill-ring-do-append-insert buf pt nil))
-      (prepend (browse-kill-ring-do-prepend-insert buf pt nil))
+      (insert (browse-kill-ring-do-insert pt nil))
+      (append (browse-kill-ring-do-append-insert pt nil))
+      (prepend (browse-kill-ring-do-prepend-insert  pt nil))
       (t (error "Unknown insert-action: %s" insert-action)))
     (cl-case post-action
       (move
@@ -318,9 +317,7 @@ well."
 If optional argument QUIT is non-nil, close the *Kill Ring* buffer as
 well."
   (interactive "P")
-  (browse-kill-ring-do-insert (current-buffer)
-                              (point)
-                              quit)
+  (browse-kill-ring-do-insert (point) quit)
   (browse-kill-ring-delete))
 
 (defun browse-kill-ring-insert-and-quit ()
@@ -331,10 +328,9 @@ well."
 (defun browse-kill-ring-insert-and-move (&optional quit)
   "Like `browse-kill-ring-insert', but move the entry to the front."
   (interactive "P")
-  (let ((buf (current-buffer))
-        (pt (point)))
-    (browse-kill-ring-do-insert buf pt quit)
-    (let ((str (browse-kill-ring-current-string buf pt)))
+  (let ((pt (point)))
+    (browse-kill-ring-do-insert pt quit)
+    (let ((str (browse-kill-ring-current-string pt)))
       (browse-kill-ring-delete)
       (kill-new str)))
   (unless quit
@@ -349,9 +345,7 @@ well."
   "Like `browse-kill-ring-insert', but it places the entry at the beginning
 of the buffer as opposed to point.  Point is left unchanged after inserting."
   (interactive "P")
-  (browse-kill-ring-do-prepend-insert (current-buffer)
-                                      (point)
-                                      quit))
+  (browse-kill-ring-do-prepend-insert (point) quit))
 
 (defun browse-kill-ring-prepend-insert-and-quit ()
   "Like `browse-kill-ring-prepend-insert', but close the *Kill Ring* buffer."
@@ -362,10 +356,9 @@ of the buffer as opposed to point.  Point is left unchanged after inserting."
   "Like `browse-kill-ring-prepend-insert', but move the entry to the front
 of the *Kill Ring*."
   (interactive "P")
-  (let ((buf (current-buffer))
-        (pt (point)))
-    (browse-kill-ring-do-prepend-insert buf pt quit)
-    (let ((str (browse-kill-ring-current-string buf pt)))
+  (let ((pt (point)))
+    (browse-kill-ring-do-prepend-insert  pt quit)
+    (let ((str (browse-kill-ring-current-string pt)))
       (browse-kill-ring-delete)
       (kill-new str)))
   (unless quit
@@ -389,10 +382,16 @@ of the *Kill Ring*."
 
     (cl-case browse-kill-ring-highlight-inserted-item
       ((pulse t)
-       (let ((pulse-delay .05) (pulse-iterations 10))
+       ;; Use cedet's pulse.el `pulse-momentary-highlight-region'
+       ;; imposing a value for the defcustom `pulse-delay' and
+       ;; `pulse-iterations' variables dynamically.
+       (progn
+         (require 'pulse)
          (with-no-warnings
-           (pulse-momentary-highlight-region
-          start end browse-kill-ring-inserted-item-face))))
+           (let ((pulse-delay .05)
+                 (pulse-iterations 10))
+             (pulse-momentary-highlight-region
+              start end browse-kill-ring-inserted-item-face)))))
       (solid
        (let ((o (make-overlay start end)))
          (overlay-put o 'face browse-kill-ring-inserted-item-face)
@@ -423,8 +422,8 @@ Temporarily restore `browse-kill-ring-original-window' and
          before-insert
          (point))))
 
-(defun browse-kill-ring-do-prepend-insert (buf pt quit)
-  (let ((str (browse-kill-ring-current-string buf pt)))
+(defun browse-kill-ring-do-prepend-insert  (pt quit)
+  (let ((str (browse-kill-ring-current-string pt)))
     (browse-kill-ring-prepare-to-insert
      quit
      (save-excursion
@@ -435,9 +434,7 @@ Temporarily restore `browse-kill-ring-original-window' and
   "Like `browse-kill-ring-insert', but places the entry at the end of the
 buffer as opposed to point.  Point is left unchanged after inserting."
   (interactive "P")
-  (browse-kill-ring-do-append-insert (current-buffer)
-                                     (point)
-                                     quit))
+  (browse-kill-ring-do-append-insert (point) quit))
 
 (defun browse-kill-ring-append-insert-and-quit ()
   "Like `browse-kill-ring-append-insert', but close the *Kill Ring* buffer."
@@ -448,10 +445,9 @@ buffer as opposed to point.  Point is left unchanged after inserting."
   "Like `browse-kill-ring-append-insert', but move the entry to the front
 of the *Kill Ring*."
   (interactive "P")
-  (let ((buf (current-buffer))
-        (pt (point)))
-    (browse-kill-ring-do-append-insert buf pt quit)
-    (let ((str (browse-kill-ring-current-string buf pt)))
+  (let ((pt (point)))
+    (browse-kill-ring-do-append-insert pt quit)
+    (let ((str (browse-kill-ring-current-string pt)))
       (browse-kill-ring-delete)
       (kill-new str)))
   (unless quit
@@ -463,8 +459,8 @@ of the *Kill Ring*."
   (interactive)
   (browse-kill-ring-append-insert-and-move t))
 
-(defun browse-kill-ring-do-append-insert (buf pt quit)
-  (let ((str (browse-kill-ring-current-string buf pt)))
+(defun browse-kill-ring-do-append-insert (pt quit)
+  (let ((str (browse-kill-ring-current-string pt)))
     (browse-kill-ring-prepare-to-insert
      quit
      (save-excursion
@@ -476,39 +472,39 @@ of the *Kill Ring*."
   (interactive)
   (forward-line 0)
   (unwind-protect
-    (let* ((over (browse-kill-ring-target-overlay-at (point)))
-           (target (overlay-get over 'browse-kill-ring-target))
-           (inhibit-read-only t))
-      (delete-region (overlay-start over) (1+ (overlay-end over)))
-      (setq kill-ring (delete target kill-ring))
-      (if (equal target (car kill-ring-yank-pointer))
-          (setq kill-ring-yank-pointer
-                (delete target kill-ring-yank-pointer)))
-      (cond
-       ;; Don't try to delete anything else in an empty buffer.
-       ((and (bobp) (eobp)) t)
-       ;; The last entry was deleted, remove the preceeding separator.
-       ((eobp)
-        (progn
-          (browse-kill-ring-forward -1)
-          (let ((over (browse-kill-ring-target-overlay-at (point))))
-            (delete-region (1+ (overlay-end over)) (point-max)))))
-       ;; Deleted a middle entry, delete following separator.
-       ((get-text-property (point) 'browse-kill-ring-extra)
-        (let ((prev (previous-single-property-change (point) 'browse-kill-ring-extra))
-              (next (next-single-property-change (point) 'browse-kill-ring-extra)))
-          (when prev (cl-incf prev))
-          (when next (cl-incf next))
-          (delete-region (or prev (point-min)) (or next (point-max))))))))
-  (browse-kill-ring-resize-window)
-  (browse-kill-ring-forward 0))
+      (let* ((over (browse-kill-ring-target-overlay-at (point)))
+             (target (overlay-get over 'browse-kill-ring-target))
+             (inhibit-read-only t))
+        (delete-region (overlay-start over) (1+ (overlay-end over)))
+        (setq kill-ring (delete target kill-ring))
+        (if (equal target (car kill-ring-yank-pointer))
+            (setq kill-ring-yank-pointer
+                  (delete target kill-ring-yank-pointer)))
+        (cond
+         ;; Don't try to delete anything else in an empty buffer.
+         ((and (bobp) (eobp)) t)
+         ;; The last entry was deleted, remove the preceeding separator.
+         ((eobp)
+          (progn
+            (browse-kill-ring-forward -1)
+            (let ((over (browse-kill-ring-target-overlay-at (point))))
+              (delete-region (1+ (overlay-end over)) (point-max)))))
+         ;; Deleted a middle entry, delete following separator.
+         ((get-text-property (point) 'browse-kill-ring-extra)
+          (let ((prev (previous-single-property-change (point) 'browse-kill-ring-extra))
+                (next (next-single-property-change (point) 'browse-kill-ring-extra)))
+            (when prev (cl-incf prev))
+            (when next (cl-incf next))
+            (delete-region (or prev (point-min)) (or next (point-max)))))))
+    (browse-kill-ring-resize-window)
+    (browse-kill-ring-forward 0)))
 
 ;; code from browse-kill-ring+.el
 (defun browse-kill-ring-target-overlay-at (position &optional no-error)
   "Return overlay at POSITION that has property `browse-kill-ring-target'.
 If no such overlay, raise an error unless NO-ERROR is true, in which
 case return nil."
-  (let ((ovs  (overlays-at (point))))
+  (let ((ovs  (overlays-at (or position (point)))))
     (catch 'browse-kill-ring-target-overlay-at
       (dolist (ov  ovs)
         (when (overlay-get ov 'browse-kill-ring-target)
@@ -517,17 +513,17 @@ case return nil."
         (error "No selection-ring item here")))))
 
 ;; Find the string to insert at the point by looking for the overlay.
-(defun browse-kill-ring-current-string (buf pt &optional no-error)
+(defun browse-kill-ring-current-string (pt &optional no-error)
   (let ((o (browse-kill-ring-target-overlay-at pt t)))
     (if o
         (overlay-get o 'browse-kill-ring-target)
       (unless no-error
         (error "No kill ring item here")))))
 
-(defun browse-kill-ring-do-insert (buf pt quit)
-  (let ((str (browse-kill-ring-current-string buf pt)))
+(defun browse-kill-ring-do-insert (pt quit)
+  (let ((str (browse-kill-ring-current-string pt)))
     (setq kill-ring-yank-pointer
-          (browse-kill-ring-current-kill-ring-yank-pointer buf pt))
+          (browse-kill-ring-current-kill-ring-yank-pointer pt))
     (browse-kill-ring-prepare-to-insert
      quit
      (when browse-kill-ring-this-buffer-replace-yanked-text
@@ -652,7 +648,7 @@ entry."
   (cl-case browse-kill-ring-quit-action
     (save-and-restore
       (if (< emacs-major-version 24)
-        (let (buf (current-buffer))
+          (let ((buf (current-buffer)))
              (set-window-configuration browse-kill-ring-original-window-config)
            (kill-buffer buf))
        (quit-window)))
@@ -869,8 +865,7 @@ reselects ENTRY in the `*Kill Ring*' buffer."
     (browse-kill-ring-insert-as-separated-1 (car items) nil)))
 
 (defun browse-kill-ring-insert-as-separated-1 (origitem separatep)
-  (let* ((item (browse-kill-ring-elide origitem))
-         (len (length item)))
+  (let* ((item (browse-kill-ring-elide origitem)))
     (browse-kill-ring-add-overlays-for origitem
                                        (insert item))
     ;; When the kill-ring has items with read-only text property at
@@ -947,7 +942,7 @@ Ring*' buffer is adjusted, the `browse-kill-ring-preview-overlay'
 is updated to preview the text of the selection at PT (or the
 current point if not specified)."
   (let ((new-text (browse-kill-ring-current-string
-                   (current-buffer) (or pt (point)) t)))
+                    (or pt (point)) t)))
     (browse-kill-ring-preview-update-text new-text)))
 
 (defun browse-kill-ring-preview-update-for-edit ()
@@ -956,7 +951,7 @@ Callback triggered after a change in the *Kill Ring Edit* buffer,
 update the preview in the original buffer."
   (browse-kill-ring-preview-update-text (buffer-string)))
 
-(defun browse-kill-ring-current-index (buf pt)
+(defun browse-kill-ring-current-index (pt)
   "Return current index."
   (let ((overlay-start-point
          (overlay-start
@@ -978,14 +973,14 @@ update the preview in the original buffer."
             (setq current-index (1+ current-index))))))
     current-index))
 
-(defun browse-kill-ring-current-kill-ring-yank-pointer (buf pt)
+(defun browse-kill-ring-current-kill-ring-yank-pointer (pt)
   "Return current kill-ring-yank-pointer."
   (let ((result-yank-pointer kill-ring)
-        (current-string (browse-kill-ring-current-string buf pt))
+        (current-string (browse-kill-ring-current-string pt))
         (found nil)
         (i 0))
     (if browse-kill-ring-display-duplicates
-      (setq result-yank-pointer (nthcdr (browse-kill-ring-current-index buf pt) kill-ring))
+      (setq result-yank-pointer (nthcdr (browse-kill-ring-current-index pt) kill-ring))
       (if browse-kill-ring-display-leftmost-duplicate
         ;; search leftmost duplicate
         (while (< i (length kill-ring))
@@ -1069,9 +1064,10 @@ it's turned on."
               ;; display leftmost or rightmost duplicate.
               ;; if `browse-kill-ring-display-leftmost-duplicate' is t,
               ;; display leftmost(last) duplicate.
-              (cl-delete-duplicates items
-                                 :test #'equal
-                                 :from-end browse-kill-ring-display-leftmost-duplicate))
+              (setq items
+                    (cl-delete-duplicates items
+                                          :test #'equal
+                                          :from-end browse-kill-ring-display-leftmost-duplicate)))
             (when (stringp regexp)
               (setq items (delq nil
                                 (mapcar
@@ -1134,7 +1130,7 @@ start of the buffer."
         current-target-string)
     (while (not stop-search)
       (setq current-target-string
-            (browse-kill-ring-current-string (current-buffer) (point)))
+            (browse-kill-ring-current-string (point)))
       (if (not current-target-string)
           (setq stop-search t)
         (if (equal current-target-string entry-string)
