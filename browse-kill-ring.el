@@ -484,7 +484,7 @@ of the *Kill Ring*."
         (cond
          ;; Don't try to delete anything else in an empty buffer.
          ((and (bobp) (eobp)) t)
-         ;; The last entry was deleted, remove the preceeding separator.
+         ;; The last entry was deleted, remove the preceding separator.
          ((eobp)
           (progn
             (browse-kill-ring-forward -1)
@@ -714,6 +714,9 @@ You most likely do not want to call `browse-kill-ring-mode' directly; use
 
 (declare-function yank-pop@kill-ring-browse-maybe "browse-kill-ring")
 
+;; Fallback advice function for Emacs 24.4–24.x (which have advice-add but not
+;; define-advice).  Defined unconditionally; used only when define-advice is
+;; unavailable (see `browse-kill-ring-default-keybindings').
 ;;;###autoload
 (defun browse-kill-ring-default-keybindings ()
   "Set up M-y (`yank-pop') so that it can invoke `browse-kill-ring'.
@@ -729,7 +732,7 @@ behavior.  This function sets things up so that M-y will invoke
             (browse-kill-ring)
           (barf-if-buffer-read-only)
           (apply oldfun args)))
-    ;; Use a technique available in Emacs < 25.1 and supported in Emacs 30.
+    ;; Fallback for Emacs 24.4–24.x: define-advice unavailable, use advice-add instead.
     (unless (advice-member-p #'browse-kill-ring--yank-pop-kill-ring-browse-maybe #'yank-pop)
       (advice-add 'yank-pop :around #'browse-kill-ring--yank-pop-kill-ring-browse-maybe))))
 
