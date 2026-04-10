@@ -263,6 +263,7 @@ call `browse-kill-ring' again.")
       (if (/= (point-min) (point-max))
           (shrink-window-if-larger-than-buffer window)
         (shrink-window (- (window-height) window-min-height))))))
+(declare-function browse-kill-ring-fit-window "browse-kill-ring")
 
 (defun browse-kill-ring-resize-window ()
   (when browse-kill-ring-resize-window
@@ -483,7 +484,7 @@ of the *Kill Ring*."
         (cond
          ;; Don't try to delete anything else in an empty buffer.
          ((and (bobp) (eobp)) t)
-         ;; The last entry was deleted, remove the preceeding separator.
+         ;; The last entry was deleted, remove the preceding separator.
          ((eobp)
           (progn
             (browse-kill-ring-forward -1)
@@ -701,27 +702,43 @@ You most likely do not want to call `browse-kill-ring-mode' directly; use
   (define-key browse-kill-ring-mode-map (kbd "b") 'browse-kill-ring-prepend-insert)
   (define-key browse-kill-ring-mode-map (kbd "a") 'browse-kill-ring-append-insert))
 
+
+;; `yank-pop' replacement:
+;; - The code structure supports Emacs 24.4 while being compatible with the
+;;   latest version of Emacs without generating warnings.
+;; - The code uses a fallback advice function for Emacs 24.4–24.x (which
+;;   supports `advice-add' but does not support `define-advice').
+;; - Defined unconditionally; used only when `define-advice' is unavailable
+;;   (see `browse-kill-ring-default-keybindings').
+
+(defun browse-kill-ring--yank-pop-kill-ring-browse-maybe (oldfun &rest args)
+  "If last action was not a yank, run `browse-kill-ring' instead."
+  (interactive "p")
+  (if (not (eq last-command 'yank))
+      (browse-kill-ring)
+    (barf-if-buffer-read-only)
+    (apply oldfun args)))
+
+(declare-function yank-pop@kill-ring-browse-maybe "browse-kill-ring")
+
 ;;;###autoload
 (defun browse-kill-ring-default-keybindings ()
   "Set up M-y (`yank-pop') so that it can invoke `browse-kill-ring'.
-Normally, if M-y was not preceeded by C-y, then it has no useful
+Normally, if M-y was not preceded by C-y, then it has no useful
 behavior.  This function sets things up so that M-y will invoke
 `browse-kill-ring'."
   (interactive)
-  (defadvice yank-pop (around kill-ring-browse-maybe (arg))
-    "If last action was not a yank, run `browse-kill-ring' instead."
-    ;; yank-pop has an (interactive "*p") form which does not allow
-    ;; it to run in a read-only buffer.  We want browse-kill-ring to
-    ;; be allowed to run in a read only buffer, so we change the
-    ;; interactive form here.  In that case, we need to
-    ;; barf-if-buffer-read-only if we're going to call yank-pop with
-    ;; ad-do-it
-    (interactive "p")
-    (if (not (eq last-command 'yank))
-        (browse-kill-ring)
-      (barf-if-buffer-read-only)
-      ad-do-it))
-  (ad-activate 'yank-pop))
+  (if (fboundp 'define-advice)
+      (define-advice yank-pop (:around (oldfun &rest args) kill-ring-browse-maybe)
+        "If last action was not a yank, run `browse-kill-ring' instead."
+        (interactive "p")
+        (if (not (eq last-command 'yank))
+            (browse-kill-ring)
+          (barf-if-buffer-read-only)
+          (apply oldfun args)))
+    ;; Fallback for Emacs 24.4–24.x: define-advice unavailable, use advice-add instead.
+    (unless (advice-member-p #'browse-kill-ring--yank-pop-kill-ring-browse-maybe 'yank-pop)
+      (advice-add 'yank-pop :around #'browse-kill-ring--yank-pop-kill-ring-browse-maybe))))
 
 (define-derived-mode browse-kill-ring-edit-mode fundamental-mode
   "Kill Ring Edit"
