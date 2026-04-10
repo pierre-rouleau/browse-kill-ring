@@ -703,6 +703,13 @@ You most likely do not want to call `browse-kill-ring-mode' directly; use
   (define-key browse-kill-ring-mode-map (kbd "a") 'browse-kill-ring-append-insert))
 
 
+;; `yank-pop' replacement:
+;; - The code structure supports Emacs 24 while being compatible with the
+;;   latest version of Emacs without generating warnings.
+;; - The code uses a fallback advice function for Emacs 24.4–24.x (which
+;;   supports `advice-add' but does not support `define-advice').
+;; - Defined unconditionally; used only when `define-advice' is unavailable
+;;   (see `browse-kill-ring-default-keybindings').
 
 (defun browse-kill-ring--yank-pop-kill-ring-browse-maybe (oldfun &rest args)
   "If last action was not a yank, run `browse-kill-ring' instead."
@@ -714,9 +721,6 @@ You most likely do not want to call `browse-kill-ring-mode' directly; use
 
 (declare-function yank-pop@kill-ring-browse-maybe "browse-kill-ring")
 
-;; Fallback advice function for Emacs 24.4–24.x (which have advice-add but not
-;; define-advice).  Defined unconditionally; used only when define-advice is
-;; unavailable (see `browse-kill-ring-default-keybindings').
 ;;;###autoload
 (defun browse-kill-ring-default-keybindings ()
   "Set up M-y (`yank-pop') so that it can invoke `browse-kill-ring'.
