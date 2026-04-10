@@ -737,7 +737,7 @@ behavior.  This function sets things up so that M-y will invoke
           (barf-if-buffer-read-only)
           (apply oldfun args)))
     ;; Fallback for Emacs 24.4–24.x: define-advice unavailable, use advice-add instead.
-    (unless (advice-member-p #'browse-kill-ring--yank-pop-kill-ring-browse-maybe #'yank-pop)
+    (unless (advice-member-p #'browse-kill-ring--yank-pop-kill-ring-browse-maybe 'yank-pop)
       (advice-add 'yank-pop :around #'browse-kill-ring--yank-pop-kill-ring-browse-maybe))))
 
 (define-derived-mode browse-kill-ring-edit-mode fundamental-mode
