@@ -703,8 +703,7 @@ You most likely do not want to call `browse-kill-ring-mode' directly; use
   (define-key browse-kill-ring-mode-map (kbd "a") 'browse-kill-ring-append-insert))
 
 
-;; ---------------------------------------------------------------------------
-;; Fallback implementation for older Emacs that lack `define-advice`.
+
 (defun browse-kill-ring--yank-pop-kill-ring-browse-maybe (oldfun &rest args)
   "If last action was not a yank, run `browse-kill-ring' instead."
   (interactive "p")
@@ -713,12 +712,15 @@ You most likely do not want to call `browse-kill-ring-mode' directly; use
     (barf-if-buffer-read-only)
     (apply oldfun args)))
 
+(declare-function yank-pop@kill-ring-browse-maybe "browse-kill-ring")
+
 ;;;###autoload
 (defun browse-kill-ring-default-keybindings ()
   "Set up M-y (`yank-pop') so that it can invoke `browse-kill-ring'.
-Normally, if M-y was not preceeded by C-y, then it has no useful
+Normally, if M-y was not preceded by C-y, then it has no useful
 behavior.  This function sets things up so that M-y will invoke
 `browse-kill-ring'."
+  (interactive)
   (if (fboundp 'define-advice)
       (define-advice yank-pop (:around (oldfun &rest args) kill-ring-browse-maybe)
         "If last action was not a yank, run `browse-kill-ring' instead."
@@ -727,9 +729,9 @@ behavior.  This function sets things up so that M-y will invoke
             (browse-kill-ring)
           (barf-if-buffer-read-only)
           (apply oldfun args)))
+    ;; Use a technique available in Emacs < 25.1 and supported in Emacs 30.
     (unless (advice-member-p #'browse-kill-ring--yank-pop-kill-ring-browse-maybe #'yank-pop)
       (advice-add 'yank-pop :around #'browse-kill-ring--yank-pop-kill-ring-browse-maybe))))
-(declare-function yank-pop@kill-ring-browse-maybe "browse-kill-ring")
 
 (define-derived-mode browse-kill-ring-edit-mode fundamental-mode
   "Kill Ring Edit"
