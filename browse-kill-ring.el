@@ -709,20 +709,20 @@ Normally, if M-y was not preceeded by C-y, then it has no useful
 behavior.  This function sets things up so that M-y will invoke
 `browse-kill-ring'."
   (interactive)
-  (defadvice yank-pop (around kill-ring-browse-maybe (arg))
+  (define-advice yank-pop (:around (oldfun &rest args) kill-ring-browse-maybe)
     "If last action was not a yank, run `browse-kill-ring' instead."
     ;; yank-pop has an (interactive "*p") form which does not allow
     ;; it to run in a read-only buffer.  We want browse-kill-ring to
     ;; be allowed to run in a read only buffer, so we change the
     ;; interactive form here.  In that case, we need to
     ;; barf-if-buffer-read-only if we're going to call yank-pop with
-    ;; ad-do-it
+    ;; the original function.
     (interactive "p")
     (if (not (eq last-command 'yank))
         (browse-kill-ring)
       (barf-if-buffer-read-only)
-      ad-do-it))
-  (ad-activate 'yank-pop))
+      (apply oldfun args))))
+(declare-function yank-pop@kill-ring-browse-maybe "browse-kill-ring")
 
 (define-derived-mode browse-kill-ring-edit-mode fundamental-mode
   "Kill Ring Edit"
