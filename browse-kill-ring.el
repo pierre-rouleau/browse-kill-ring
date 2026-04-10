@@ -704,7 +704,7 @@ You most likely do not want to call `browse-kill-ring-mode' directly; use
 
 
 ;; `yank-pop' replacement:
-;; - The code structure supports Emacs 24 while being compatible with the
+;; - The code structure supports Emacs 24.4 while being compatible with the
 ;;   latest version of Emacs without generating warnings.
 ;; - The code uses a fallback advice function for Emacs 24.4–24.x (which
 ;;   supports `advice-add' but does not support `define-advice').
